@@ -6,7 +6,9 @@
  | Mike MacMillan
  | mikejmacmillan@gmail.com
 */
-var _ = require('lodash'),
+var util = require('util'),
+    http = require('http'),
+    _ = require('lodash'),
     cons = require('consolidate'),
     express = require('express'),
     crane = null,
@@ -16,6 +18,7 @@ function web_nodejs(opt) {
     if(_app) return web_nodejs;
 
     //**** nodejs http server implementation here
+    return web;
 }
 
 function web_express(opt) {
@@ -51,7 +54,7 @@ function web_express(opt) {
 
         //** initialize the supported rendering engines 
         !Array.isArray(opt.engine) && (opt.engine = [opt.engine]);
-        opt.engine.forEach(function(obj) { _app.engine(obj.name, obj.handler); })
+        opt.engine.forEach(function(obj) { _app.engine(obj.name, cons[obj.handler]); })
 
         //** set the first registered engine as the default; set the base view path
         _app.set('view engine', opt.engine[0].name);
@@ -61,20 +64,29 @@ function web_express(opt) {
         opt.middleware(_app);
     });
 
-    return web_express;
+    return web;
 }
 
-//** extend the express function for custom config; this should be used for custom middleware, etc
-_.extend(web_express, { configure: function(cb) { cb.call(crane, _app) } });
-
-//** expose the factory methods for 
-module.exports = {
+module.exports = web = {
     initialize: function(parent) { crane = parent; },
+
+    //** passes the router to the developer for custom configuration
+    configure: function(cb) { 
+        cb.call(crane, _app); 
+        return web;
+    },
+
+    //** start the http server given the router function (this is essentially what express does)
+    listen: function() {
+        var host = http.createServer(_app);
+        host.listen.apply(host, arguments);
+    },
+
+    //** accessor for the web server instance
+    app: function() { return _app },
 
     //** the web server factory objects
     express: web_express,
-    nodejs: web_nodejs,
+    nodejs: web_nodejs
 
-    //** accessor for the web server instance
-    app: function() { return _app }
 }
