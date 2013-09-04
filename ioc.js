@@ -30,7 +30,7 @@ _.extend(ioc, {
     initialize: function(parent) { crane = parent; },
 
     //** the supported component lifetimes; these effect how the object is resolved
-    lifeTime: {
+    lifetime: {
         singleton: 'singleton',
         transient: 'transient'
     },
@@ -60,8 +60,8 @@ _.extend(ioc, {
                     //** require the object to see if its valid; fire the parse callback if so, then create the container key and register it
                     if((x = require(p +'/'+ name))) {
                         if(('apply' in opt.parse) && !opt.parse.call(this, x)) return;
-                        x['ioc-key'] = (base +'.').replace('..', '.') + (x[opt.keyProp] || path.basename(name, '.js'));
-                        this.register(x['ioc-key'], x, opt);
+                        var key = (base +'.').replace('..', '.') + (x[opt.keyProp] || path.basename(name, '.js'));
+                        this.register(key, x, opt);
                     }
                 }
             }.bind(this));
@@ -74,9 +74,26 @@ _.extend(ioc, {
         return this;
     },
 
+    children: function(key, obj, opt) {
+        if(!obj) return;
+
+        //** apply some defaults
+        _.defaults((opt = opt||{}), {
+            filter: defaults.parse //** ie, do nothing to filter by default
+        });
+
+        //** split the object's children into key/value pairs, and register each, allowing the dev a chance to filter before registration
+        _.pairs(obj).forEach(function(pair) {
+            if(('apply' in opt.filter) && !opt.filter.apply(this, pair)) return;
+            this.register(key +'.'+ pair[0], pair[1], opt);
+        }.bind(this));
+
+        return this;
+    },
+
     register: function(key, obj, opt) {
         _.defaults((opt = opt||{}), {
-            lifeTime: ioc.lifeTime.singleton //** components adhere to the singleton lifetime by default
+            lifetime: ioc.lifetime.singleton //** components adhere to the singleton lifetime by default
         });
 
         //** small helper to construct objects based on either a function constructor, or object literal
@@ -91,14 +108,14 @@ _.extend(ioc, {
         if(modules[key]) return;
         modules[key] = {
             key: key,
-            lifeTime: opt.lifeTime,
+            lifetime: opt.lifetime,
 
             //** provides the correct instance of the object based on lifetime
             resolve: function(args) {
                 args = args||[];
 
                 //** return the singleton object
-                if(opt.lifeTime == ioc.lifeTime.singleton)
+                if(opt.lifetime == ioc.lifetime.singleton)
                     return obj;
 
                 //** construct the transient object, of the given type, with the given arguments
@@ -106,6 +123,7 @@ _.extend(ioc, {
                 return construct.apply(this, args);
             }
         }
+        console.log('registered: ', key);
         return this;
     },
 
