@@ -123,8 +123,21 @@ _.extend(ioc, {
                 return construct.apply(this, args);
             }
         }
-        console.log('registered: ', key);
+
         return this;
+    },
+
+    //** returns all the objects of the given namespace; no nskey returns all objects registered against the root
+    ns: function(nskey) {
+        var objs = [],
+            gex = nskey && nskey != '' ? new RegExp('\\.?'+ nskey +'\\.(.*?)') : /^[^.]*$/;
+
+        //** find all the objects of the given namespace, and return a resolved object for use
+        for(var key in modules) {
+            gex.test(key) && objs.push(modules[key].resolve());
+        }
+
+        return objs;
     },
 
     //** remove this

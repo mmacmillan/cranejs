@@ -10,7 +10,7 @@ var util = require('util'),
     emitter = require('events').EventEmitter;
 
 //** the supported components; move these to a folder and register by convention vs explicitly
-var comps = ['ioc', 'web', 'crypto', 'middleware'];
+var components = ['ioc', 'web', 'mvc', 'crypto', 'middleware'];
 
 module.exports = crane = {
     //** provide some base dir context, and a helper
@@ -22,7 +22,7 @@ module.exports = crane = {
 }
 
 //** register and initialize the components
-comps.forEach(function(name) {
+components.forEach(function(name) {
     var comp = (crane[name] = require('./'+ name));
     comp.initialize && comp.initialize(crane);
 });
