@@ -68,7 +68,7 @@ function web_express(opt) {
 }
 
 module.exports = web = {
-    initialize: function(parent) { crane = parent; },
+    __init: function(parent) { crane = parent; },
 
     //** passes the router to the developer for custom configuration
     configure: function(cb) { 

@@ -20,20 +20,45 @@ var defaults = {
 };
 
 //** the ioc container; resolves an object key against the container, given the arguments
-function ioc(key) { 
-    var args = _.toArray(arguments).slice(1);
-    return modules[key] && modules[key].resolve(args);
-}
+function ioc(key) { return this.resolve(key) }
 
 //** extend the ioc object
 _.extend(ioc, {
-    initialize: function(parent) { crane = parent; },
+    __init: function(parent) { crane = parent; },
 
     //** the supported component lifetimes; these effect how the object is resolved
     lifetime: {
         singleton: 'singleton',
         transient: 'transient'
     },
+
+
+    //** Resolution Methods
+    //** ----
+
+    //** format: resolve('key', arg1, arg2, arg3, arg4, ...)
+    resolve: function(key) {
+        //** find the object by key, and resolve with the given arguments
+        var args = _.toArray(arguments).slice(1);
+        return modules[key] && modules[key].resolve(args);
+    },
+
+    //** format: ns('controllers')
+    ns: function(nskey) {
+        var objs = [],
+            gex = nskey && nskey != '' ? new RegExp('\\.?'+ nskey +'\\.(.*?)') : /^[^.]*$/;
+
+        //** find all the objects of the given namespace, and return a resolved object for use
+        for(var key in modules)
+            gex.test(key) && objs.push(modules[key].resolve());
+
+        return objs;
+    },
+
+
+
+    //** Registration Methods
+    //** ----
 
     path: function(dir, opt) {
         //** some default options...
@@ -127,18 +152,6 @@ _.extend(ioc, {
         return this;
     },
 
-    //** returns all the objects of the given namespace; no nskey returns all objects registered against the root
-    ns: function(nskey) {
-        var objs = [],
-            gex = nskey && nskey != '' ? new RegExp('\\.?'+ nskey +'\\.(.*?)') : /^[^.]*$/;
-
-        //** find all the objects of the given namespace, and return a resolved object for use
-        for(var key in modules) {
-            gex.test(key) && objs.push(modules[key].resolve());
-        }
-
-        return objs;
-    },
 
     //** remove this
     dump: function() { console.log(util.inspect(modules)); return this; }
