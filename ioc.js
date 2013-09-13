@@ -9,7 +9,9 @@
 var util = require('util'),
     _ = require('lodash'),
     fs = require('fs'),
+    events = require('events'),
     path = require('path'),
+    vm = require('vm'),
     modules = {},
     crane = null;
 
@@ -20,16 +22,28 @@ var defaults = {
 };
 
 //** the ioc container; resolves an object key against the container, given the arguments
-function ioc(key) { return this.resolve(key) }
+function ioc(key) { return ioc.resolve(key) }
 
 //** extend the ioc object
-_.extend(ioc, {
+_.extend(ioc, events.EventEmitter.prototype, {
     __init: function(parent) { crane = parent; },
 
-    //** the supported component lifetimes; these effect how the object is resolved
+    //** the supported lifetime types; these effect how the object is resolved
+    /*
+        object: middleware, helper function, utility library, etc; return it "as-is", do not attempt to create/instantiate
+        singleton: repository, controller, etc; ensure this object is created one time, and that instance is reused when .resolve()'d
+        transient: object, component, widget, etc; a new instance of this object is returned each time .resolve() is called
+    */
     lifetime: {
+        object: 'object',
         singleton: 'singleton',
         transient: 'transient'
+    },
+
+    //** allows the user to specifically configure the ioc object, while still maintaining a fluent interface
+    configure: function(fn) {
+        fn && fn.call(ioc, ioc);
+        return this;
     },
 
 
@@ -39,19 +53,29 @@ _.extend(ioc, {
     //** format: resolve('key', arg1, arg2, arg3, arg4, ...)
     resolve: function(key) {
         //** find the object by key, and resolve with the given arguments
+        key = (key||'').toLowerCase();
         var args = _.toArray(arguments).slice(1);
-        return modules[key] && modules[key].resolve(args);
+        var comp = modules[key] && modules[key].resolve(args);
+
+        //** if the object couldn't be resolved, trigger an event for handling
+        !comp && ioc.emit('resolve:error', { key: key });
+        return comp;
     },
 
     //** format: ns('controllers')
     ns: function(nskey) {
-        var objs = [],
+        var objs = {},
+            nskey = (nskey||'').toLowerCase(),
             gex = nskey && nskey != '' ? new RegExp('\\.?'+ nskey +'\\.(.*?)') : /^[^.]*$/;
 
         //** find all the objects of the given namespace, and return a resolved object for use
-        for(var key in modules)
-            gex.test(key) && objs.push(modules[key].resolve());
+        for(var key in modules) 
+            gex.test(key) && (objs[key.replace(nskey +'.', '')] = modules[key].resolve());
 
+        //** trigger an error if we couldn't resolve the namespace
+        Object.keys(objs).length==0 && this.emit('resolve:error', { namespace: nskey });
+
+        //** return a null object if we didn't resolve any objects from that namespace
         return objs;
     },
 
@@ -117,16 +141,15 @@ _.extend(ioc, {
     },
 
     register: function(key, obj, opt) {
+        key = (key||'').toLowerCase();
         _.defaults((opt = opt||{}), {
-            lifetime: ioc.lifetime.singleton //** components adhere to the singleton lifetime by default
+            lifetime: ioc.lifetime.object //** objects by default, are registered as objects; not instantiated, used "as-is"
         });
 
-        //** small helper to construct objects based on either a function constructor, or object literal
-        function construct(base) {
-            var args = _.toArray(arguments).slice(1);
-            function fn() { ('apply' in base) && base.apply(this, args); }
-            fn.prototype = ('prototype' in base) && base.prototype || base; //** supports an object literal as the prototype
-            return new fn();
+        function create(base) {
+            var inst = Object.create(base.hasOwnProperty('prototype') ? base.prototype : base); //** allow an object to be the prototype
+            ('apply' in base) && base.apply(inst, _.toArray(arguments).slice(1)); //** call the "base constructor" if its there...
+            return inst;
         }
 
         //** register the object, wrapped in a facade to facilitate resolution, given the component lifetime
@@ -134,21 +157,47 @@ _.extend(ioc, {
         modules[key] = {
             key: key,
             lifetime: opt.lifetime,
+            instance: null,
 
             //** provides the correct instance of the object based on lifetime
             resolve: function(args) {
+                var comp = null; 
                 args = args||[];
+                args.unshift(obj);
 
-                //** return the singleton object
-                if(opt.lifetime == ioc.lifetime.singleton)
-                    return obj;
+                //** return object's directly
+                if(opt.lifetime == ioc.lifetime.object) 
+                    comp = obj;
+
+                //** return the singleton, instantiating if not yet
+                else if(opt.lifetime == ioc.lifetime.singleton)
+                    comp = modules[key].instance || (modules[key].instance = create.apply(this, args));
 
                 //** construct the transient object, of the given type, with the given arguments
-                args.unshift(obj);
-                return construct.apply(this, args);
+                else
+                    comp = create.apply(this, args);
+
+                //** resolve any dependencies; im on the fence about using _dependencies...
+                if(!comp._resolved && obj._dependencies) {
+                    comp._resolved = true; //** mark as resolved immediately to prevent an infinite loop of resolution, aka resolution-of-doom
+
+                    if(!Array.isArray(obj._dependencies)) obj._dependencies = [obj._dependencies];
+
+                    //** resolve each dependency, assuming we're resolving a namespace if the dependency starts with ns:, ex ns:Controllers
+                    obj._dependencies.forEach(function(dep) {
+                        var key = dep.replace('ns:','');
+                        /^ns\:(.*?)/.test(dep)
+                            ? comp[key] = ioc.ns(key)
+                            : comp[key] = ioc.resolve(key);
+                    });
+                }
+                
+                return comp;
             }
         }
 
+        //** provide a shorthand to its container registration object
+        obj._iocKey = key;
         return this;
     },
 
@@ -157,4 +206,6 @@ _.extend(ioc, {
     dump: function() { console.log(util.inspect(modules)); return this; }
 });
 
-module.exports = exports = ioc;
+//** initialize the ioc as an eventEmitter as well; psuedo-inheritance, then expose it as the module
+events.EventEmitter.call(ioc);
+module.exports = global.ioc = ioc;
