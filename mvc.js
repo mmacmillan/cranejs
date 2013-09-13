@@ -14,6 +14,7 @@ var util = require('util'),
     crane = null;
 
 var _controllers = {},
+    _queue = [],
     _app = null,
     _ioc = null,
     _opt = null,
@@ -32,8 +33,8 @@ module.exports = mvc = {
 
         //** some defaults
         _.defaults((_opt = opt||{}), {
-            indexView: 'index',
             defaultController: 'index',
+            indexView: 'index',
             routePrefix: '/',
             controllers: '/controllers/',
             views: '/views/'
@@ -43,38 +44,39 @@ module.exports = mvc = {
         _app = app;
         _errorHandler = opt.errorHandler;
 
+        //** initialize any controllers that have been q'd
+        _queue.forEach(initializeController);
+
         _init = true;
     },
 
     //** sets the ioc container we use for resolving objects
-    container: function(cont) { cont && _ioc = cont; },
+    container: function(cont) { if(cont) _ioc = cont; return mvc },
 
-    controller: function(name, deps, impl) {
+    controller: function(name, deps, impl) { //** m: the module object that invoked .controller()
         if(!name || !impl) return; //** validate/normalize
-        !Array.IsArray((deps = deps||[])) && deps = [deps];
+        !Array.isArray((deps = deps||[])) && (deps = [deps]);
 
         //** if we've seen this controller before, return it, otherwise, store it
         if(_controllers[name]) return _controllers[name];
-        _controllers[name] = impl;
+        _controllers[name] = impl = _.extend(impl, {name: name||''});
 
         //** make sure the controller knows about its dependencies by name
-        deps.length > 0 && !impl.dependencies && (impl.dependencies = deps);
+        if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
 
-        if(!_init) return;
-        
-        NEED TO "PARSE" CONTROLLER HERE, SAME WAY WE WOULD WHEN INITIALIZE IS CALLED, THIS ALLOWS
-        CONTROLLERS TO BE ADDED BEFORE AND AFTER INIT
+        //** initialize our controller, or queue it for initialization later
+        _init
+            ? initializeController(impl)
+            : _queue.push(impl);
 
-    },
-
-    models: function(list) {
-        return mvc;
+        //** set the controller implementation as the exports object for the given module
+        return impl;
     }
-}
+};
 
 
 
-//** Helper Methods
+//** Routing
 //** ----
 
 function route(handler, req, res, next) { //** simple route handler
@@ -106,21 +108,13 @@ function route(handler, req, res, next) { //** simple route handler
         .catch(error);
 }
 
-function parseController(c) {
-    //** wire up the "index" method for the controller, if an "index" method is implemented
-    c[_opt.indexView] && _app.all(_opt.routePrefix + c.name +'(/)?', _errorHandler, route.bind(c, c[_opt.indexView]));
-
+function initializeController(c) {
     //** wire up the individual controller methods
-    parseMethods(c);
+    parseMethods(c, c.name);
 
-    //** if this is the default controller...
-    if(c.name == _opt.defaultController) { 
-        //** wire up the app root route to it; this is the primary root redirect
-        _app.all(_opt.routePrefix +'[/]?', _errorHandler, route.bind(c, c[_opt.indexView]));
-
-        //** wire up the default controllers methods off the root
-        parseMethods(_.extend(c, {name: ''}));
-    }
+    //** if this is the default controller, wire it up sans controller name (let its methods be served off root)
+    if(c.name == _opt.defaultController) 
+        parseMethods(c, '');
 
     //** extend the default controller implementation onto the object
     _.defaults(c, {
@@ -155,29 +149,39 @@ function parseController(c) {
             }.bind(this));
         }
     });
+
+    //** if a container has been provided, resolve the controller, to get its dependencies
+    _ioc && _ioc(c._iocKey);
+
+    //** if the controller implements an initialize method, call it now
+    _.isFunction(c.initialize) && c.initialize.call(c);
 }
 
+//** parses route handlers from the given object
 function parseMethods(obj, path, ctx) {
     ctx = ctx||obj;
-    !obj.name && (obj.name = '');
+    if(!path && path != '') path = obj.name||'';
+    if(path != '' && _.last(path) != '/') path += '/';
 
     for(var m in obj) {
-        //** convention: anything starting with underscore is "private"
-        if(/^_.*/.test(m)) continue;                 
+        //** convention: anything starting with underscore is "private", dont wire up the initialize method as a route handler
+        if(/^_.*/.test(m) || m == 'initialize') continue;                 
 
-        //** recursively parse controller methods, preserving paths
-//**** this only supports a single level of nesting, and isn't working right...fix this
+        //** if the property is an object, parse it, nesting the path; this allows /controller/nested/object/endpoint routes easily
         if(typeof(obj[m]) == 'object') {
-            parseMethods.call(this, _.extend(obj[m], {name: obj.name}), m +'/', ctx);
+            parseMethods(obj[m], path + m, ctx);
             continue;
         }
 
-        if(typeof(obj[m]) !== 'function') continue;
+        if(!_.isFunction(obj[m])) continue;
+
+        //** if this is the "index" method, wire it up sans named endpoint
+        m == _opt.indexView && _app.all(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
 
         //**** add translation table here to translate method names before we create endpoints
         //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
         
         //** create a callback for every "public" method
-        _app.all(_opt.routePrefix + (obj.name !== '' ? obj.name +'/' : '') + (path||'') + m +'(/)?', _errorHandler, route.bind(ctx, obj[m]));
+        _app.all(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
     }
 }
