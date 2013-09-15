@@ -10,6 +10,7 @@ var util = require('util'),
     _ = require('lodash'),
     fs = require('fs'),
     path = require('path'),
+    mongoose = require('mongoose'),
     q = require('q'),
     crane = null;
 
@@ -47,6 +48,7 @@ module.exports = mvc = {
         //** initialize any controllers that have been q'd
         _queue.forEach(initializeController);
 
+
         _init = true;
     },
 
@@ -83,8 +85,20 @@ function route(handler, req, res, next) { //** simple route handler
     function error(err) { _errorHandler && _errorHandler.call(this, err, req ,res) }
     var p = q.defer();
 
+    //** helper to "send a response", optionally specifying the content type and status code
+    p.response = function(obj, status, opt) {
+        var type = typeof(opt) === 'string' && opt || null;
+
+        //** set the status code and content type if specified
+        if(status) res.statusCode = status;
+        if(type) res.set('content-type', type);
+
+        //** resolve the promise with the object
+        p.resolve(obj);
+    }
+
     //** call the handler for this route
-    util.log('[http] route: '+ req.url);
+    util.log('[http] routing: '+ req.url);
     handler.call(this, p, req, res);
 
     //** handle the callback
@@ -94,14 +108,15 @@ function route(handler, req, res, next) { //** simple route handler
 
             //** 1) if the result object is a string, assume its markup and send text/html to the client
             if(typeof(result) == 'string') {
-                res.writeHead(200, {'content-type': 'text/html'});
+                !res.get('content-type') && res.set('content-type', 'text/html');
                 res.end(result.toString());
 
             //** 2) if the result object is an object, assume its an object literaly that needs to be serialized to json
             } else {
-                res.writeHead(200, { 'content-type': 'application/javascript' });
+                !res.get('content-type') && res.set('content-type', 'application/javascript');
                 res.end(JSON.stringify(result));
             }
+
         })
 
         //** handle errors using the global error handler
@@ -118,6 +133,10 @@ function initializeController(c) {
 
     //** extend the default controller implementation onto the object
     _.defaults(c, {
+        util: {
+            //** returns a mongoose objectId from a string/int/etc id
+            ObjectId: function(id) { return mongoose.Types.ObjectId(id); }
+        },
 
         //** a simple method that wraps the pattern of rendering a view with options
         renderView: function(res, name, opt, p) {
@@ -173,7 +192,7 @@ function parseMethods(obj, path, ctx) {
             continue;
         }
 
-        if(!_.isFunction(obj[m])) continue;
+        if(typeof(obj[m]) !== 'function') continue;
 
         //** if this is the "index" method, wire it up sans named endpoint
         m == _opt.indexView && _app.all(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
