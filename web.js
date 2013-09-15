@@ -82,11 +82,14 @@ module.exports = web = {
         host.listen.apply(host, arguments);
     },
 
-    //** accessor for the web server instance
-    app: function() { return _app },
-
     //** the web server factory objects
     express: web_express,
     nodejs: web_nodejs
 
 }
+
+//** create the read-only .app property of the web component, to return the app instance
+Object.defineProperty(web, 'app', {
+    enumerable: true,
+    get: function() { return _app; }
+});

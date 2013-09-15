@@ -201,7 +201,6 @@ _.extend(ioc, events.EventEmitter.prototype, {
         return this;
     },
 
-
     //** remove this
     dump: function() { console.log(util.inspect(modules)); return this; }
 });
