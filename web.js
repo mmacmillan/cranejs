@@ -51,6 +51,7 @@ function web_express(opt) {
     _app = express();
     _app.configure(function() {
         _app.set('strict routing', opt.strictRouting);
+        _app.set('x-powered-by', false);
 
         //** initialize the supported rendering engines 
         !Array.isArray(opt.engine) && (opt.engine = [opt.engine]);

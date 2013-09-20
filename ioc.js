@@ -153,7 +153,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
         }
 
         //** register the object, wrapped in a facade to facilitate resolution, given the component lifetime
-        if(modules[key]) return;
+        if(modules[key] && opt.force !== true) return;
         modules[key] = {
             key: key,
             lifetime: opt.lifetime,
@@ -185,10 +185,14 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
                     //** resolve each dependency, assuming we're resolving a namespace if the dependency starts with ns:, ex ns:Controllers
                     obj._dependencies.forEach(function(dep) {
-                        var key = dep.replace('ns:','');
-                        /^ns\:(.*?)/.test(dep)
-                            ? comp[key] = ioc.ns(key)
-                            : comp[key] = ioc.resolve(key);
+                        if(dep.indexOf(':') != -1) { //** if its an alias...ns: or SomeAlias:
+                            var segs = dep.split(':');
+
+                            /^ns\:(.*?)/.test(dep)
+                                ? comp[segs[1]] = ioc.ns(segs[1]) //** ex, ['ns:Foobars']
+                                : comp[segs[0]] = ioc.resolve(segs[1]) //** ex, ['Foobar:Some.Nested.Component.Foobar']
+                        } else
+                            comp[dep] = ioc.resolve(dep); //** ex, ['Foobar']
                     });
                 }
                 
