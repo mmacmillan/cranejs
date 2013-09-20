@@ -1,15 +1,15 @@
 var url = require('url'),
-    util = require('util');
+    util = require('util'),
+    options = {};
 
-var options = {},
-    auth = (module.exports = {
+var auth = (module.exports = {
 
-    //** util methods
+    //** cookie helpers
     //** ----
 
-    util: {
+    cookie: {
         //** set the auth cookie for the given response and value; hardcoded base64 and a long expires...move to options
-        setCookie: function(res, username, id, opt) { 
+        set: function(res, username, id, opt) { 
             opt = opt||{};
             opt.expires = opt.expires||new Date(Date.now() + 900000); //** 15 minutes
             opt.httpOnly = opt.httpOnly===false?false:true;
@@ -21,13 +21,13 @@ var options = {},
         },
 
         //** get the auth cookie based on the options, for the given request
-        getCookie: function(req) { 
+        get: function(req) { 
             if(req.cookies[options.authCookie])
                 return options.crypto.aesDecrypt(req.cookies[options.authCookie], 'hex');
         },
 
         //** set the cookie to expires in the past, so the browser will remove it
-        removeCookie: function(res) {
+        removeremove: function(res) {
             res.cookie(options.authCookie, '', { 
                 expires: new Date(Date.now() - 14*(24*(60*(60*1000))) ) 
             });//** 14 days ago
@@ -80,7 +80,7 @@ var options = {},
                 throw new Error('No crypto provided');
 
             return function authentication(req, res, next) {
-                var ck = auth.util.getCookie(req),
+                var ck = auth.cookie.get(req),
                     uri = url.parse(req.url);
 
                 //** get the request user from the cookie if its exists, set the request user

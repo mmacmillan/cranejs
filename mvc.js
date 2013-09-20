@@ -28,7 +28,7 @@ var _controllers = {},
 //** Component Interface
 //** ----
 
-module.exports = mvc = {
+var mvc = (module.exports = {
     __init: function(crane) { crane = crane; },
 
     initialize: function(app, opt) {
@@ -97,7 +97,7 @@ module.exports = mvc = {
         return impl;
 
     }
-};
+});
 
 
 

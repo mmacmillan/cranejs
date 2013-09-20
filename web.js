@@ -68,7 +68,7 @@ function web_express(opt) {
     return web;
 }
 
-module.exports = web = {
+var web = (module.exports = {
     __init: function(parent) { crane = parent; },
 
     //** passes the router to the developer for custom configuration
@@ -87,7 +87,7 @@ module.exports = web = {
     express: web_express,
     nodejs: web_nodejs
 
-}
+});
 
 //** create the read-only .app property of the web component, to return the app instance
 Object.defineProperty(web, 'app', {
