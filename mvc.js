@@ -15,7 +15,9 @@ var util = require('util'),
     crane = null;
 
 var _controllers = {},
+    _repos = {},
     _queue = [],
+    _repoQueue = [],
     _app = null,
     _ioc = null,
     _opt = null,
@@ -45,25 +47,24 @@ module.exports = mvc = {
         _app = app;
         _errorHandler = opt.errorHandler;
 
-        //** initialize any controllers that have been q'd
+        //** initialize any repos and controllers that have been q'd
+        _repoQueue.forEach(initializeRepo);
         _queue.forEach(initializeController);
-
-
         _init = true;
     },
 
     //** sets the ioc container we use for resolving objects
     container: function(cont) { if(cont) _ioc = cont; return mvc },
 
-    controller: function(name, deps, impl) { //** m: the module object that invoked .controller()
-        if(!name || !impl) return; //** validate/normalize
+    controller: function(name, deps, impl) {
+        if(!name || !impl) return;
         !Array.isArray((deps = deps||[])) && (deps = [deps]);
 
         //** if we've seen this controller before, return it, otherwise, store it
-        if(_controllers[name]) return _controllers[name];
+        if(_controllers[(name = name.toLowerCase())]) return _controllers[name];
         _controllers[name] = impl = _.extend(impl, {name: name||''});
 
-        //** make sure the controller knows about its dependencies by name
+        //** make sure the controller knows about its dependencies by name, the ioc will resolve these
         if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
 
         //** initialize our controller, or queue it for initialization later
@@ -73,6 +74,28 @@ module.exports = mvc = {
 
         //** set the controller implementation as the exports object for the given module
         return impl;
+    },
+
+    repository: function(name, model, deps, impl) {
+        if(!name || !model || !impl) return;
+        !Array.isArray((deps = deps||[])) && (deps = [deps]);
+
+        //** if we've seen this repo before, return it, otherwise, store it
+        if(_repos[(name = name.toLowerCase())]) return _repos[name];
+        _repos[name] = impl = _.extend(impl, {name: name||''});
+
+        //** make sure the repo knows about its dependencies by name, the ioc will resolve these
+        if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
+
+        //** initialize our repo, or queue it for initialization later
+        var obj = { name: name, model: model, impl: impl };
+        _init
+            ? initializeRepo(obj)
+            : _repoQueue.push(obj);
+
+        //** set the repo implementation as the exports object for the given module
+        return impl;
+
     }
 };
 
@@ -117,10 +140,11 @@ function route(handler, req, res, next) { //** simple route handler
                 res.end(JSON.stringify(result));
             }
 
-        })
+        }, error)
 
-        //** handle errors using the global error handler
-        .catch(error);
+        .catch(function(a, b) {
+            console.log('caught');
+        });
 }
 
 function initializeController(c) {
@@ -176,6 +200,24 @@ function initializeController(c) {
     _.isFunction(c.initialize) && c.initialize.call(c);
 }
 
+function initializeRepo(r) {
+    if(!_ioc && typeof(r.model) === 'string')
+        throw new Error('No container is available to resolve the model:'+ r.model);
+
+    //** resolve a string model
+    if(typeof(r.model) === 'string') r.model = _ioc(r.model);
+
+    //** compile a new model that we can mixin with our repo implementation; this keeps the base model separate from our decorated repository
+    var repo = _.extend(mongoose.Model.compile(r.model.modelName, r.model.schema, r.model.collection.name, mongoose.connection, mongoose), r.impl);
+
+    //** re-register the object with the container
+    _ioc && r.impl._iocKey && _ioc.register(r.name, repo, {force: true});
+
+    //** if the repo implements an initialize method, call it now
+    _.isFunction(repo.initialize) && repo.initialize.call(repo);
+}
+
+
 //** parses route handlers from the given object
 function parseMethods(obj, path, ctx) {
     ctx = ctx||obj;
@@ -195,12 +237,16 @@ function parseMethods(obj, path, ctx) {
         if(typeof(obj[m]) !== 'function') continue;
 
         //** if this is the "index" method, wire it up sans named endpoint
-        m == _opt.indexView && _app.all(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
+        if(m == _opt.indexView) {
+            _app.get(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
+            _app.post(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
+        }
 
         //**** add translation table here to translate method names before we create endpoints
         //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
         
         //** create a callback for every "public" method
-        _app.all(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
+        _app.get(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
+        _app.post(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
     }
 }
