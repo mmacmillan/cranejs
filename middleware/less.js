@@ -38,7 +38,7 @@ function middleware(req, res, next) {
 }
 
 //** set the base path that will be used by the middleware, prior to using
-module.exports = exports = function(path, errorHandler) {
+module.exports = function(path, errorHandler) {
     _basePath = path;
     _errorHandler = errorHandler;
     return middleware;

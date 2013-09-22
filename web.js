@@ -11,8 +11,11 @@ var util = require('util'),
     _ = require('lodash'),
     cons = require('consolidate'),
     express = require('express'),
-    crane = null,
     _app = null;
+
+
+//** web server factory methods
+//** ----
 
 function web_nodejs(opt) {
     if(_app) return web_nodejs;
@@ -35,16 +38,8 @@ function web_express(opt) {
         views: '/views/',
         logs: '/logs/',
 
-        middleware: function(app) {
-            //** express middleware (parse all-the-things by default)
-            app.use(express.cookieParser());
-            app.use(express.json());
-            app.use(express.urlencoded());
-            app.use(express.multipart());
-
-            //** all pub assets are served static
-            app.use(express.static(opt.root + opt.pub));
-        }
+        extendMiddleware: true, //** when true, any .middleware function defined will be passed to the default middleware and integrated, vs overwriting it
+        middleware: function() {}
     });
 
     //** initialize the express app with some common concerns
@@ -59,18 +54,45 @@ function web_express(opt) {
 
         //** set the first registered engine as the default; set the base view path
         _app.set('view engine', opt.engine[0].name);
-        _app.set('views', opt.views);
+        _app.set('views', opt.root + opt.views);
 
-        //** register the middleware
-        opt.middleware(_app);
+        //** register the middleware, either extending the default middleware, or overwriting it with a custom middleware stack
+        opt.extendMiddleware
+            ? defaultMiddleware(_app, opt, opt.middleware)
+            : opt.middleware(_app);
     });
 
     return web;
 }
 
-var web = (module.exports = {
-    __init: function(parent) { crane = parent; },
 
+
+//** helper methods
+//** ----
+
+function defaultMiddleware(app, opt, cb) {
+    //** express middleware (parse all-the-things by default)
+    app.use(express.cookieParser());
+    app.use(express.json());
+    app.use(express.urlencoded());
+    app.use(express.multipart());
+
+    //** fire the callback, to allow injecting middleware such as auth, above the router/static middleware
+    cb && cb(app);
+
+    //** try and handle the request via the registered routes
+    app.use(app.router);
+
+    //** then try and serve it from the public assets, if possible
+    app.use(express.static(opt.root + opt.pub));
+}
+
+
+
+//** web component interface
+//** ----
+
+var web = (module.exports = {
     //** passes the router to the developer for custom configuration
     configure: function(cb) { 
         cb.call(crane, _app); 

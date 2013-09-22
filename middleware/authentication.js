@@ -10,6 +10,8 @@ var auth = (module.exports = {
     cookie: {
         //** set the auth cookie for the given response and value; hardcoded base64 and a long expires...move to options
         set: function(res, username, id, opt) { 
+            if(!options.crypto) return;
+
             opt = opt||{};
             opt.expires = opt.expires||new Date(Date.now() + 900000); //** 15 minutes
             opt.httpOnly = opt.httpOnly===false?false:true;
@@ -22,15 +24,15 @@ var auth = (module.exports = {
 
         //** get the auth cookie based on the options, for the given request
         get: function(req) { 
-            if(req.cookies[options.authCookie])
+            if(options.crypto && req.cookies[options.authCookie])
                 return options.crypto.aesDecrypt(req.cookies[options.authCookie], 'hex');
         },
 
         //** set the cookie to expires in the past, so the browser will remove it
-        removeremove: function(res) {
+        remove: function(res) {
             res.cookie(options.authCookie, '', { 
-                expires: new Date(Date.now() - 14*(24*(60*(60*1000))) ) 
-            });//** 14 days ago
+                expires: new Date(Date.now() - 14*(24*(60*(60*1000))) ) //** 14 days ago
+            });
         }
     },
 
@@ -76,8 +78,6 @@ var auth = (module.exports = {
                 res.redirect(options.authUrl +'?r='+ encodeURIComponent(req.url));
             }
 
-            if(!options.crypto)
-                throw new Error('No crypto provided');
 
             return function authentication(req, res, next) {
                 var ck = auth.cookie.get(req),
@@ -85,7 +85,6 @@ var auth = (module.exports = {
 
                 //** get the request user from the cookie if its exists, set the request user
                 if(ck) {
-                    debugger;
                     var parts = ck.split('|');
                     req.user = { username: parts[0] }
                 }
@@ -93,7 +92,7 @@ var auth = (module.exports = {
                 //** if the user is present, or we're serving static assets, skip auth
                 if(req.user 
                     || /^\/auth\/?(.*?)?/.test(uri.pathname) //** auth urls
-                    || new RegExp('^\/('+ opt.public +')\/(.*?)').test(uri.pathname)) //** static resource urls
+                    || new RegExp('^\/('+ options.public +')\/(.*?)').test(uri.pathname)) //** static resource urls
                     return next();
 
                 //** fire the fail handler; by default this redirects the user to the auth url

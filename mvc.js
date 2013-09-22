@@ -10,9 +10,9 @@ var util = require('util'),
     _ = require('lodash'),
     fs = require('fs'),
     path = require('path'),
+    handlebars = require('handlebars'),
     mongoose = require('mongoose'),
-    q = require('q'),
-    crane = null;
+    q = require('q');
 
 var _controllers = {},
     _repos = {},
@@ -22,15 +22,16 @@ var _controllers = {},
     _ioc = null,
     _opt = null,
     _init = null,
-    _errorHandler = null;
+    _errorHandler = null,
+    _templates = {
+        layout: {}
+    };
 
 
 //** Component Interface
 //** ----
 
 var mvc = (module.exports = {
-    __init: function(crane) { crane = crane; },
-
     initialize: function(app, opt) {
         if(_init) return;
 
@@ -39,13 +40,29 @@ var mvc = (module.exports = {
             defaultController: 'index',
             indexView: 'index',
             routePrefix: '/',
-            controllers: '/controllers/',
-            views: '/views/'
         });
 
         //** set the global reference to the express app (express only for now)
         _app = app;
         _errorHandler = opt.errorHandler;
+
+        //** if handlebars is being used, do some extra parsing
+        if(_app.settings['view engine'] == 'hndl') { //** move this to config or an "enum"
+            var layouts = app.settings.views + 'layout/',
+                partials = app.settings.views + 'partials/',
+                formatName = function(n) { return n.replace(path.extname(n), '') };
+
+            //** find any layouts defined within the views folder; compile them as a handlebars template
+            //*** dont read and cache these during dev, use a config to toggle this...
+            fs.existsSync(layouts) && fs.readdirSync(layouts).forEach(function(layout) {
+                _templates.layout[formatName(layout)] = handlebars.compile(fs.readFileSync(layouts+layout, 'utf8'));
+            });
+
+            //** find any partials defined within the views folder; register them with handlebars
+            fs.existsSync(partials) && fs.readdirSync(partials).forEach(function(partial) {
+                handlebars.registerPartial(formatName(partial), fs.readFileSync(partials+partial, 'utf8'));
+            });
+        }
 
         //** initialize any repos and controllers that have been q'd
         _repoQueue.forEach(initializeRepo);
@@ -163,7 +180,7 @@ function initializeController(c) {
         },
 
         //** a simple method that wraps the pattern of rendering a view with options
-        renderView: function(res, name, opt, p) {
+        view: function(res, name, opt, p) {
             p = p || _q.defer(), opt = opt||{};
 
             //** render the view, return a promise, resolving/rejecting it when the view is rendered
@@ -172,24 +189,6 @@ function initializeController(c) {
                 p.resolve(html);
             });
             return p.promise;
-        },
-
-        renderLayout: function(res, views, opt, p) {
-            opt = opt||{};
-            var views = _.isArray(views)?views:[views],
-                q = [];
-
-            //** iterate the views, creating an array of promises for views
-            views.forEach(function(view) { q.push(this.renderView(res, view.name||view, view.opt||{})) }.bind(this));
-
-            //** when all the promises have been completed, aggregate their html chunks
-            _q.all(q).then(function(results) {
-                var html = '';
-                (results||[]).forEach(function(chunk) { html += chunk; });
-
-                //** render the layout
-                this.renderView(res, opt.layoutView||'layout', _.extend(opt, { content: html }), p);
-            }.bind(this));
         }
     });
 
@@ -250,3 +249,35 @@ function parseMethods(obj, path, ctx) {
         _app.post(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
     }
 }
+
+
+//** handlebars helpers
+//** ----
+
+handlebars.registerHelper('layout', function(name, opt) {
+    !opt && (opt = name) && (name = null);
+
+    //** get the layout template and build a context
+    var layout = _templates.layout[name||'default'], 
+        ctx = layout && _.extend(this, opt, { content: opt.fn(this) });
+
+    //** either render the layout with the block text, or just render the block text
+    return layout && layout.call(this, ctx) || opt.fn(this);
+});
+
+handlebars.registerHelper('template', function(path, opt) {
+    !opt && (opt = path) && (path = null);
+
+    //** load and cache the template if we haven't seen it before
+    var template = _templates[path];
+    if(!template) {
+        var temp = fs.readFileSync(_app.settings.views + path + (path.indexOf('.') == -1 ? '.hndl' : ''), 'utf8'); //**** weak test for extension, fix this
+        //temp && (_templates[path] = template = handlebars.compile(temp)); //**** disable caching until we use config to toggle it
+        temp && (template = handlebars.compile(temp));
+    }
+
+    //** render the template with the block content
+    return template
+        ? template.call(this, _.extend(this, opt, { content: opt.fn(this) }))
+        : opt.fn(this);
+});

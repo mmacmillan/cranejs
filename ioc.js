@@ -12,8 +12,7 @@ var util = require('util'),
     events = require('events'),
     path = require('path'),
     vm = require('vm'),
-    modules = {},
-    crane = null;
+    modules = {}
 
 var defaults = {
     keyProp: 'name',
@@ -26,8 +25,6 @@ function ioc(key) { return ioc.resolve(key) }
 
 //** extend the ioc object
 _.extend(ioc, events.EventEmitter.prototype, {
-    __init: function(parent) { crane = parent; },
-
     //** the supported lifetime types; these effect how the object is resolved
     /*
         object: middleware, helper function, utility library, etc; return it "as-is", do not attempt to create/instantiate

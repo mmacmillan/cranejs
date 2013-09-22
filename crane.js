@@ -21,8 +21,5 @@ module.exports = crane = {
     }
 }
 
-//** register and initialize the components
-components.forEach(function(name) {
-    var comp = (crane[name] = require('./'+ name));
-    comp.__init && comp.__init(crane);
-});
+//** load the crane components
+components.forEach(function(name) { crane[name] = require('./'+ name) })
