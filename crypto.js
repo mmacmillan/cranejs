@@ -31,9 +31,10 @@ module.exports = function(baseSalt) {
         },
 
         aesEncrypt: function(data, encoding) {
+            encoding = encoding||'base64';
             var cipher = crypto.createCipher('aes-256-cbc', baseSalt);
-            var encpw = cipher.update(data, 'utf8', encoding||'base64');
-            return (encpw += cipher.final('base64'));
+            var encpw = cipher.update(data, 'utf8', encoding);
+            return (encpw += cipher.final(encoding));
         },
 
         aesDecrypt: function(data, encoding) {

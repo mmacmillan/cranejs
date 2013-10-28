@@ -92,7 +92,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
         function load(p) {
             var dirs = [], 
-                base = path.normalize(p.replace(crane.path, '')).substring(1).replace(/[/\\]/g, '.'),
+                base = opt.key || path.normalize(p.replace(crane.path, '')).substring(1).replace(/[/\\]/g, '.'),
                 files = fs.readdirSync(p);
 
             files.forEach(function(name) {
@@ -116,7 +116,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
             dirs.forEach(load.bind(this));
         }
 
-        load.call(this, path.normalize(crane.path + dir));
+        load.call(this, path.normalize(dir[0] == '/' ? dir : crane.path +'/'+ dir));
         return this;
     },
 
@@ -176,20 +176,19 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
                 //** resolve any dependencies; im on the fence about using _dependencies...
                 if(!comp._resolved && obj._dependencies) {
-                    comp._resolved = true; //** mark as resolved immediately to prevent an infinite loop of resolution, aka resolution-of-doom
+                    comp._resolved = [];
 
                     if(!Array.isArray(obj._dependencies)) obj._dependencies = [obj._dependencies];
 
                     //** resolve each dependency, assuming we're resolving a namespace if the dependency starts with ns:, ex ns:Controllers
                     obj._dependencies.forEach(function(dep) {
-                        if(dep.indexOf(':') != -1) { //** if its an alias...ns: or SomeAlias:
-                            var segs = dep.split(':');
+                        var segs = dep.split(':'),
+                            ns = dep.indexOf(':') != -1,
+                            key = ns ? segs[1] : dep;
 
-                            /^ns\:(.*?)/.test(dep)
-                                ? comp[segs[1]] = ioc.ns(segs[1]) //** ex, ['ns:Foobars']
-                                : comp[segs[0]] = ioc.resolve(segs[1]) //** ex, ['Foobar:Some.Nested.Component.Foobar']
-                        } else
-                            comp[dep] = ioc.resolve(dep); //** ex, ['Foobar']
+                        comp._resolved.push(ns
+                            ? ioc.ns(key)
+                            : ioc.resolve(dep));
                     });
                 }
                 

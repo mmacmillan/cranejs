@@ -79,7 +79,7 @@ var mvc = (module.exports = {
 
         //** if we've seen this controller before, return it, otherwise, store it
         if(_controllers[(name = name.toLowerCase())]) return _controllers[name];
-        _controllers[name] = impl = _.extend(impl, {name: name||''});
+        _controllers[name] = impl = _.extend(impl, {_name: name||''});
 
         //** make sure the controller knows about its dependencies by name, the ioc will resolve these
         if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
@@ -99,7 +99,7 @@ var mvc = (module.exports = {
 
         //** if we've seen this repo before, return it, otherwise, store it
         if(_repos[(name = name.toLowerCase())]) return _repos[name];
-        _repos[name] = impl = _.extend(impl, {name: name||''});
+        _repos[name] = impl = _.extend(impl, {_name: name||''});
 
         //** make sure the repo knows about its dependencies by name, the ioc will resolve these
         if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
@@ -137,6 +137,12 @@ function route(handler, req, res, next) { //** simple route handler
         p.resolve(obj);
     }
 
+    //** wrap a call to the response method, wrapping the message in an envelope, with a 500 error
+    p.error = function(message) { p.response({ message: message }, 500) }
+
+    //** used for callbacks to promises for fail state, etc
+    p.errorCallback = function(err) { p.error(err.message) }
+
     //** call the handler for this route
     util.log('[http] routing: '+ req.url);
     handler.call(this, p, req, res);
@@ -153,8 +159,13 @@ function route(handler, req, res, next) { //** simple route handler
 
             //** 2) if the result object is an object, assume its an object literaly that needs to be serialized to json
             } else {
+                var status = "ok";
+
+                //** set a custom status based on the status code
+                if(res.statusCode == 500) status = "error";
+
                 !res.get('content-type') && res.set('content-type', 'application/javascript');
-                res.end(JSON.stringify(result));
+                res.end(JSON.stringify({ status: status, response: result }));
             }
 
         }, error)
@@ -165,15 +176,22 @@ function route(handler, req, res, next) { //** simple route handler
 }
 
 function initializeController(c) {
+    var fn = c;
+    if(!_.isFunction(c)) fn = function() { return c };
+
+    //** resolve the controller, to get its dependencies
+    _ioc(c._iocKey);
+    var impl = fn.apply(fn, c._resolved||[]);
+
     //** wire up the individual controller methods
-    parseMethods(c, c.name);
+    parseMethods(impl, c._name);
 
     //** if this is the default controller, wire it up sans controller name (let its methods be served off root)
-    if(c.name == _opt.defaultController) 
-        parseMethods(c, '');
+    if(c._name == _opt.defaultController)
+        parseMethods(impl, '');
 
     //** extend the default controller implementation onto the object
-    _.defaults(c, {
+    _.defaults(impl, {
         util: {
             //** returns a mongoose objectId from a string/int/etc id
             ObjectId: function(id) { return mongoose.Types.ObjectId(id); }
@@ -192,25 +210,26 @@ function initializeController(c) {
         }
     });
 
-    //** if a container has been provided, resolve the controller, to get its dependencies
-    _ioc && _ioc(c._iocKey);
-
     //** if the controller implements an initialize method, call it now
-    _.isFunction(c.initialize) && c.initialize.call(c);
+    _.isFunction(impl.initialize) && impl.initialize.call(impl);
 }
 
 function initializeRepo(r) {
-    if(!_ioc && typeof(r.model) === 'string')
-        throw new Error('No container is available to resolve the model:'+ r.model);
-
     //** resolve a string model
     if(typeof(r.model) === 'string') r.model = _ioc(r.model);
 
+    var fn = r.impl;
+    if(!_.isFunction(fn)) fn = function() { return r.impl };
+
+    //** resolve the controller, to get its dependencies
+    _ioc(r.impl._iocKey);
+    var impl = fn.apply(r.impl, r.impl._resolved||[]);
+
     //** compile a new model that we can mixin with our repo implementation; this keeps the base model separate from our decorated repository
-    var repo = _.extend(mongoose.Model.compile(r.model.modelName, r.model.schema, r.model.collection.name, mongoose.connection, mongoose), r.impl);
+    var repo = _.extend(mongoose.Model.compile(r.model.modelName, r.model.schema, r.model.collection.name, mongoose.connection, mongoose), impl, { model: r.model });
 
     //** re-register the object with the container
-    _ioc && r.impl._iocKey && _ioc.register(r.name, repo, {force: true});
+    r.impl._iocKey && _ioc.register(r.name, repo, {force: true});
 
     //** if the repo implements an initialize method, call it now
     _.isFunction(repo.initialize) && repo.initialize.call(repo);
@@ -218,10 +237,10 @@ function initializeRepo(r) {
 
 
 //** parses route handlers from the given object
-function parseMethods(obj, path, ctx) {
+function parseMethods(obj, p, ctx) {
     ctx = ctx||obj;
-    if(!path && path != '') path = obj.name||'';
-    if(path != '' && _.last(path) != '/') path += '/';
+    if(!p && p != '') p = obj._name||''; //** p = path
+    if(p != '' && _.last(p) != '/') p += '/';
 
     for(var m in obj) {
         //** convention: anything starting with underscore is "private", dont wire up the initialize method as a route handler
@@ -229,7 +248,7 @@ function parseMethods(obj, path, ctx) {
 
         //** if the property is an object, parse it, nesting the path; this allows /controller/nested/object/endpoint routes easily
         if(typeof(obj[m]) == 'object') {
-            parseMethods(obj[m], path + m, ctx);
+            parseMethods(obj[m], p + m, ctx);
             continue;
         }
 
@@ -237,16 +256,14 @@ function parseMethods(obj, path, ctx) {
 
         //** if this is the "index" method, wire it up sans named endpoint
         if(m == _opt.indexView) {
-            _app.get(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
-            _app.post(_opt.routePrefix + path, _errorHandler, route.bind(obj, obj[m]));
+            _app.all(_opt.routePrefix + p , _errorHandler, route.bind(obj, obj[m])); //** for now...
+        } else {
+            //**** add translation table here to translate method names before we create endpoints
+            //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
+            
+            //** create a callback for every "public" method
+            _app.all(_opt.routePrefix + p + m +'/?', _errorHandler, route.bind(ctx, obj[m])); //** for now as well...
         }
-
-        //**** add translation table here to translate method names before we create endpoints
-        //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
-        
-        //** create a callback for every "public" method
-        _app.get(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
-        _app.post(_opt.routePrefix + path + m +'/?', _errorHandler, route.bind(ctx, obj[m]));
     }
 }
 
@@ -265,13 +282,13 @@ handlebars.registerHelper('layout', function(name, opt) {
     return layout && layout.call(this, ctx) || opt.fn(this);
 });
 
-handlebars.registerHelper('template', function(path, opt) {
-    !opt && (opt = path) && (path = null);
+handlebars.registerHelper('template', function(p, opt) {
+    !opt && (opt = p) && (p = null);
 
     //** load and cache the template if we haven't seen it before
-    var template = _templates[path];
+    var template = _templates[p];
     if(!template) {
-        var temp = fs.readFileSync(_app.settings.views + path + (path.indexOf('.') == -1 ? '.hndl' : ''), 'utf8'); //**** weak test for extension, fix this
+        var temp = fs.readFileSync(_app.settings.views + p + (p.indexOf('.') == -1 ? '.hndl' : ''), 'utf8'); //**** weak test for extension, fix this
         //temp && (_templates[path] = template = handlebars.compile(temp)); //**** disable caching until we use config to toggle it
         temp && (template = handlebars.compile(temp));
     }

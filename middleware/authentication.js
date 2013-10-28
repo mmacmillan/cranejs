@@ -1,5 +1,5 @@
 var url = require('url'),
-    util = require('util'),
+    qs = require('querystring'),
     options = {};
 
 var auth = (module.exports = {
@@ -16,16 +16,18 @@ var auth = (module.exports = {
             opt.expires = opt.expires||new Date(Date.now() + 900000); //** 15 minutes
             opt.httpOnly = opt.httpOnly===false?false:true;
 
-            res.cookie(options.authCookie, options.crypto.aesEncrypt(username +'='+ id +'|'+ (opt.data||''), 'base64'), { 
+            res.cookie(options.authCookie, options.crypto.aesEncrypt('username='+ username +'&id='+ id + (opt.data?'&'+ opt.data:''), 'hex'), { 
+                domain: options.authCookieDomain||null,
                 expires: opt.expires, 
                 httpOnly: opt.httpOnly
             }) 
         },
 
         //** get the auth cookie based on the options, for the given request
-        get: function(req) { 
-            if(options.crypto && req.cookies[options.authCookie])
-                return options.crypto.aesDecrypt(req.cookies[options.authCookie], 'hex');
+        get: function(req, decrypt) { 
+            var cookie = req.cookies[options.authCookie];
+            if(options.crypto && cookie)
+                return decrypt !== false ? options.crypto.aesDecrypt(cookie, 'hex'): cookie;
         },
 
         //** set the cookie to expires in the past, so the browser will remove it
@@ -61,17 +63,18 @@ var auth = (module.exports = {
     method: {
 
         //** cookie based authentication; supply the cookie name to look for, the url to redirect to, and any options
-        cookie: function(cookieName, authUrl, opt) {
+        cookie: function(domain, cookieName, authUrl, opt) {
             //** allow opt to be a fail: function()
             if(typeof(opt) == 'function') opt = { fail: opt }; 
             //** allow authUrl to be a opt
-            if(typeof(authUrl) == 'object') opt = authUrl;
+            if(typeof(authUrl) == 'object') { opt = authUrl; authUrl = null; }
 
             //** set the middleware options
             opt = opt||{};
             options.public = opt.public || 'js|g|css|pub'; //** regex OR of pub paths
             options.authUrl = authUrl;
             options.authCookie = cookieName;
+            options.authCookieDomain = domain;
             options.crypto = opt.crypto;
             options.fail = opt.fail||function(req, res, next) { 
                 //** otherwise, redirect all other requests to authenticate
@@ -79,14 +82,19 @@ var auth = (module.exports = {
             }
 
 
-            return function authentication(req, res, next) {
+            return function(req, res, next) {
                 var ck = auth.cookie.get(req),
                     uri = url.parse(req.url);
 
                 //** get the request user from the cookie if its exists, set the request user
                 if(ck) {
-                    var parts = ck.split('|');
-                    req.user = { username: parts[0] }
+                    var cookie = qs.parse(ck);
+
+                    req.cookie = auth.cookie.get(req, false);
+                    req.user = { 
+                        id: cookie.id,
+                        username: cookie.username
+                    }
                 }
 
                 //** if the user is present, or we're serving static assets, skip auth

@@ -29,3 +29,6 @@ module.exports = exports = function(err, req, res, next) {
 }
 
 exports.httpError = HttpError;
+exports.promiseRejectHandler = function(req, res, err) { //** allows .bind(req, res), then passing the err at a later time
+    exports.call(this, new HttpError(500, err && err.message, true), req, res);
+}
