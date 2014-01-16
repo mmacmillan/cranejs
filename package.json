@@ -1,6 +1,7 @@
 { 
-    "name": "crane.js",
+    "name": "cranejs",
     "version": "0.0.1",
     "author": "Mike MacMillan <mikejmacmillan@gmail.com>",
     "main": "./crane.js"
 }
+
