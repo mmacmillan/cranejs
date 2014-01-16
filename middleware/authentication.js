@@ -9,17 +9,14 @@ var auth = (module.exports = {
 
     cookie: {
         //** set the auth cookie for the given response and value; hardcoded base64 and a long expires...move to options
-        set: function(res, username, id, opt) { 
+        set: function(res, username, id, opt) {
+            opt = opt||{};
             if(!options.crypto) return;
 
-            opt = opt||{};
-            opt.expires = opt.expires||new Date(Date.now() + 900000); //** 15 minutes
-            opt.httpOnly = opt.httpOnly===false?false:true;
-
-            res.cookie(options.authCookie, options.crypto.aesEncrypt('username='+ username +'&id='+ id + (opt.data?'&'+ opt.data:''), 'hex'), { 
-                domain: options.authCookieDomain||null,
-                expires: opt.expires, 
-                httpOnly: opt.httpOnly
+            res.cookie(options.authCookie, this.generateToken(username, id, opt), {
+                domain: opt.authCookieDomain||(options.authCookieDomain||null),
+                expires: opt.expires||new Date(Date.now() + 900000), //** 15 minutes
+                httpOnly: opt.httpOnly===false?false:true
             }) 
         },
 
@@ -35,9 +32,16 @@ var auth = (module.exports = {
             res.cookie(options.authCookie, '', { 
                 expires: new Date(Date.now() - 14*(24*(60*(60*1000))) ) //** 14 days ago
             });
+        },
+
+        generateToken: function(username, id, opt) {
+            opt = opt||{};
+            var hash = 'username='+ username +'&id='+ id + '&timestamp='+ (new Date);
+
+            //** return the encrypted has as the token
+            return options.crypto.aesEncrypt(hash, opt.encoding||'hex');
         }
     },
-
 
     //** error methods
     //** ----
@@ -83,17 +87,18 @@ var auth = (module.exports = {
 
 
             return function(req, res, next) {
-                var ck = auth.cookie.get(req),
+                //** first get the token from the cookie
+                var token = auth.cookie.get(req),
                     uri = url.parse(req.url);
 
                 //** get the request user from the cookie if its exists, set the request user
-                if(ck) {
-                    var cookie = qs.parse(ck);
+                if(token) {
+                    var data = qs.parse(token);
 
                     req.cookie = auth.cookie.get(req, false);
                     req.user = { 
-                        id: cookie.id,
-                        username: cookie.username
+                        id: data.id,
+                        username: data.username
                     }
                 }
 
