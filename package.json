@@ -2,6 +2,15 @@
     "name": "cranejs",
     "version": "0.0.1",
     "author": "Mike MacMillan <mikejmacmillan@gmail.com>",
-    "main": "./crane.js"
+    "main": "./crane.js",
+
+    "dependencies": {
+        "express": "3.2.x",
+        "request": "2.27.0",
+        "cors": "1.0.x",
+        "lodash": "*",
+        "q": "0.9.x",
+        "mongoose": "3.6.x"
+    }
 }
 
