@@ -79,7 +79,7 @@ var mvc = (module.exports = {
 
         //** if we've seen this controller before, return it, otherwise, store it
         if(_controllers[(name = name.toLowerCase())]) return _controllers[name];
-        _controllers[name] = impl = _.extend(impl, {_name: name||''});
+        _controllers[name] = impl = _.extend(impl, { _name: name||'' });
 
         //** make sure the controller knows about its dependencies by name, the ioc will resolve these
         if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
@@ -99,7 +99,7 @@ var mvc = (module.exports = {
 
         //** if we've seen this repo before, return it, otherwise, store it
         if(_repos[(name = name.toLowerCase())]) return _repos[name];
-        _repos[name] = impl = _.extend(impl, {_name: name||''});
+        _repos[name] = impl = _.extend(impl, { _name: name||'' });
 
         //** make sure the repo knows about its dependencies by name, the ioc will resolve these
         if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
@@ -228,7 +228,7 @@ function initializeRepo(r) {
     //** compile a new model that we can mixin with our repo implementation; this keeps the base model separate from our decorated repository
     var repo = _.extend(mongoose.Model.compile(r.model.modelName, r.model.schema, r.model.collection.name, mongoose.connection, mongoose), impl, { model: r.model });
 
-    //** re-register the object with the container
+    //** re-register the object with the container, minus the path ,ie "repository.foo.bar"; this is for syntax sugar when defining dependencies (ie, 'UserRepo', vs 'Repository.UserRepo'
     r.impl._iocKey && _ioc.register(r.name, repo, {force: true});
 
     //** if the repo implements an initialize method, call it now
@@ -298,3 +298,4 @@ handlebars.registerHelper('template', function(p, opt) {
         ? template.call(this, _.extend(this, opt, { content: opt.fn(this) }))
         : opt.fn(this);
 });
+

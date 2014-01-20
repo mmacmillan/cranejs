@@ -21,7 +21,7 @@ var defaults = {
 };
 
 //** the ioc container; resolves an object key against the container, given the arguments
-function ioc(key) { return ioc.resolve(key) }
+function ioc(key) { return ioc.resolve.apply(ioc, arguments) }
 
 //** extend the ioc object
 _.extend(ioc, events.EventEmitter.prototype, {
@@ -103,8 +103,9 @@ _.extend(ioc, events.EventEmitter.prototype, {
                     //** apply the filter to the file's name/path, returning if necessary
                     if(('apply' in opt.filter) && !opt.filter.call(this, name)) return;
 
-                    //** require the object to see if its valid; fire the parse callback if so, then create the container key and register it
-                    if((x = require(p +'/'+ name))) {
+                    //** require the object to see if its valid; fire the parse callback if so, then create the container key and register it.  reject objects
+                    //** that return the ioc; that means they are self-registering, and merely need be require()'d
+                    if((x = require(p +'/'+ name)) !== ioc) {
                         if(('apply' in opt.parse) && !opt.parse.call(this, x)) return;
                         var key = (base +'.').replace('..', '.') + (x[opt.keyProp] || path.basename(name, '.js'));
                         this.register(key, x, opt);
@@ -137,16 +138,43 @@ _.extend(ioc, events.EventEmitter.prototype, {
         return this;
     },
 
-    register: function(key, obj, opt) {
+    //** intended for including ioc modules; those that simply ioc.register() within their .js file
+    module: function(modulePath, opt) {
+        require(path.normalize(modulePath[0] == '/' ? modulePath : crane.path +'/'+ modulePath));
+        return this;
+    },
+
+    //** 2 usages: register('name', { implementation }, { options }) or register('name', ['depependency1', 'dependency2'], { implementation }, { options })
+    //** if the implementation is a function, it is assumed that the module is returned after executing that function (with scope)
+    register: function(key, deps, obj, opt) {
+        //** normalize the key
         key = (key||'').toLowerCase();
+
+        //** allow the second argument to be either a dependency array, or the implementation itself
+        if(!Array.isArray(deps) || !obj) {
+            obj = deps;
+            opt = obj;
+            deps = [];
+        }
+
+        //** set the dependency list we want to resolve, only if it hasn't been set yet (consider a force option)
+        if(!obj._depedencies && deps.length > 0) obj._dependencies = deps;
+
         _.defaults((opt = opt||{}), {
-            lifetime: ioc.lifetime.object //** objects by default, are registered as objects; not instantiated, used "as-is"
+            lifetime: ioc.lifetime.object, //** objects by default, are registered as objects; not instantiated, used "as-is"
+            exportsObject: false //** when true, if obj is a function, it will attempt to execute it, and use the return value as the component
         });
 
-        function create(base) {
+        //** creates an instance of an object from either an object or function
+        function createObject(base) {
             var inst = Object.create(base.hasOwnProperty('prototype') ? base.prototype : base); //** allow an object to be the prototype
             ('apply' in base) && base.apply(inst, _.toArray(arguments).slice(1)); //** call the "base constructor" if its there...
             return inst;
+        }
+
+        //** gets an object from a function, given a list of dependencies; used for resolving objects that take a dependency list, and return an "instance"
+        function getObject(fn, deps) {
+            return fn.apply(fn, deps);
         }
 
         //** register the object, wrapped in a facade to facilitate resolution, given the component lifetime
@@ -158,25 +186,9 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
             //** provides the correct instance of the object based on lifetime
             resolve: function(args) {
-                var comp = null; 
-                args = args||[];
-                args.unshift(obj);
-
-                //** return object's directly
-                if(opt.lifetime == ioc.lifetime.object) 
-                    comp = obj;
-
-                //** return the singleton, instantiating if not yet
-                else if(opt.lifetime == ioc.lifetime.singleton)
-                    comp = modules[key].instance || (modules[key].instance = create.apply(this, args));
-
-                //** construct the transient object, of the given type, with the given arguments
-                else
-                    comp = create.apply(this, args);
-
-                //** resolve any dependencies; im on the fence about using _dependencies...
-                if(!comp._resolved && obj._dependencies) {
-                    comp._resolved = [];
+                //** resolve any dependencies before returning an "instance"
+                if(!obj._resolved && obj._dependencies) {
+                    obj._resolved = [];
 
                     if(!Array.isArray(obj._dependencies)) obj._dependencies = [obj._dependencies];
 
@@ -186,12 +198,30 @@ _.extend(ioc, events.EventEmitter.prototype, {
                             ns = dep.indexOf(':') != -1,
                             key = ns ? segs[1] : dep;
 
-                        comp._resolved.push(ns
+                        obj._resolved.push(ns
                             ? ioc.ns(key)
                             : ioc.resolve(dep));
                     });
                 }
-                
+
+                //** create an argument array of the resolved dependencies, and any additional args passed to resolve()
+                var comp = null,
+                    args = _.flatten((obj._resolved || []).concat(args || []));
+
+                //TODO clean this up...
+
+                //** return object directly
+                if(opt.lifetime == ioc.lifetime.object) 
+                    comp = opt.exportsObject ? getObject(obj, args) : obj;
+
+                //** return the singleton, instantiating if not yet
+                else if(opt.lifetime == ioc.lifetime.singleton)
+                    comp = modules[key].instance || (modules[key].instance = opt.exportsObject ? getObject(obj, args) : createObject.apply(obj, args));
+
+                //** construct the transient object, of the given type, with the given arguments
+                else
+                    comp = opt.exportsObject ? getObject(obj, args) : createObject.apply(obj, args);
+
                 return comp;
             }
         }
@@ -208,3 +238,4 @@ _.extend(ioc, events.EventEmitter.prototype, {
 //** initialize the ioc as an eventEmitter as well; psuedo-inheritance, then expose it as the module
 events.EventEmitter.call(ioc);
 module.exports = global.ioc = ioc;
+
