@@ -29,7 +29,8 @@ var auth = (module.exports = {
 
         //** set the cookie to expires in the past, so the browser will remove it
         remove: function(res) {
-            res.cookie(options.authCookie, '', { 
+            res.cookie(options.authCookie, '', {
+                domain: options.authCookieDomain,
                 expires: new Date(Date.now() - 14*(24*(60*(60*1000))) ) //** 14 days ago
             });
         },
@@ -105,7 +106,7 @@ var auth = (module.exports = {
                 //** if the user is present, or we're serving static assets, skip auth
                 if(req.user 
                     || /^\/auth\/?(.*?)?/.test(uri.pathname) //** auth urls
-                    || new RegExp('^\/('+ options.public +')\/(.*?)').test(uri.pathname)) //** static resource urls
+                    || new RegExp('^\/('+ options.public +')\/?(.*?)').test(uri.pathname)) //** static resource urls
                     return next();
 
                 //** fire the fail handler; by default this redirects the user to the auth url
