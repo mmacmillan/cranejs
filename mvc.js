@@ -5,26 +5,26 @@
  |
  | Mike MacMillan
  | mikejmacmillan@gmail.com
-*/
+ */
 var util = require('util'),
     _ = require('lodash'),
     fs = require('fs'),
     path = require('path'),
     handlebars = require('handlebars'),
     mongoose = require('mongoose'),
-    q = require('q');
+    q = require('q'),
+    ioc = require('cranejs').ioc;
 
-var _controllers = {},
-    _repos = {},
-    _queue = [],
-    _repoQueue = [],
-    _app = null,
-    _ioc = null,
-    _opt = null,
+var _app = null,
     _init = null,
     _errorHandler = null,
     _templates = {
         layout: {}
+    },
+    _opt = {
+        defaultController: 'index',
+        indexView: 'index',
+        routePrefix: '/',
     };
 
 
@@ -32,15 +32,11 @@ var _controllers = {},
 //** ----
 
 var mvc = (module.exports = {
-    initialize: function(app, opt) {
+    initialize: function(app, opt, cb) {
         if(_init) return;
 
-        //** some defaults
-        _.defaults((_opt = opt||{}), {
-            defaultController: 'index',
-            indexView: 'index',
-            routePrefix: '/',
-        });
+        //** overlay the defaults
+        _.defaults(_opt, opt);
 
         //** set the global reference to the express app (express only for now)
         _app = app;
@@ -65,54 +61,91 @@ var mvc = (module.exports = {
         }
 
         //** initialize any repos and controllers that have been q'd
-        _repoQueue.forEach(initializeRepo);
-        _queue.forEach(initializeController);
         _init = true;
+        cb && cb.call(mvc);
     },
 
     //** sets the ioc container we use for resolving objects
-    container: function(cont) { if(cont) _ioc = cont; return mvc },
+    container: function(cont) { if(cont) ioc = cont; return mvc },
 
     controller: function(name, deps, impl) {
-        if(!name || !impl) return;
-        !Array.isArray((deps = deps||[])) && (deps = [deps]);
-
-        //** if we've seen this controller before, return it, otherwise, store it
-        if(_controllers[(name = name.toLowerCase())]) return _controllers[name];
-        _controllers[name] = impl = _.extend(impl, { _name: name||'' });
-
-        //** make sure the controller knows about its dependencies by name, the ioc will resolve these
-        if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
-
-        //** initialize our controller, or queue it for initialization later
-        _init
-            ? initializeController(impl)
-            : _queue.push(impl);
-
         //** set the controller implementation as the exports object for the given module
-        return impl;
+        if(!name || !impl) return;
+        name = name.toLowerCase(); //** normalize the dependency name; case is ignored
+
+        //** if we've seen this controller before, return
+        if(ioc.contains(name)) return ioc(name);
+
+        ioc.register(name, deps, impl, {
+            lifetime: ioc.lifetime.singleton,
+            create: function(name, inst) {
+                name = (name||'').replace('controller', '');
+
+                //** wire up the individual controller methods
+                parseMethods(inst, name);
+
+                //** if this is the default controller, wire it up sans controller name (let its methods be served off root)
+                if(name == _opt.defaultController)
+                    parseMethods(inst, '');
+
+                //** extend the default controller implementation onto the object
+                _.defaults(inst, {
+                    util: {
+                        //** returns a mongoose objectId from a string/int/etc id
+                        ObjectId: function(id) { return mongoose.Types.ObjectId(id); }
+                    },
+
+                    //** a simple method that wraps the pattern of rendering a view with options
+                    view: function(res, vname, opt, p) {
+                        p = p || _q.defer(), opt = opt||{};
+
+                        //** render the view, return a promise, resolving/rejecting it when the view is rendered
+                        res.render(vname, opt, function(err, html) {
+                            if(err) return p.reject(err); //**** MAKE THIS RETURN AN HTTP ERROR/500
+                            p.resolve(html);
+                        });
+                        return p.promise;
+                    }
+                });
+
+                //** if the controller implements an initialize method, call it now
+                _.isFunction(inst.initialize) && inst.initialize.call(inst);
+                return inst;
+            }.bind(impl, name)
+        });
+
+        //** return the ioc so that if this is being included in a ioc.path() registration, it doesn't immediately resolve
+        return ioc;
     },
 
     repository: function(name, model, deps, impl) {
         if(!name || !model || !impl) return;
-        !Array.isArray((deps = deps||[])) && (deps = [deps]);
+        name = name.toLowerCase(); //** normalize the dependency name; case is ignored
 
-        //** if we've seen this repo before, return it, otherwise, store it
-        if(_repos[(name = name.toLowerCase())]) return _repos[name];
-        _repos[name] = impl = _.extend(impl, { _name: name||'' });
+        //** if we've seen this repo before, return
+        if(ioc.contains(name)) return ioc(name);
 
-        //** make sure the repo knows about its dependencies by name, the ioc will resolve these
-        if(deps.length > 0 && !impl._dependencies) impl._dependencies = deps;
+        //** resolve the model if given a name, 'Models.Customer'
+        if(typeof(model) === 'string')
+            model = ioc.instance(model);
 
-        //** initialize our repo, or queue it for initialization later
-        var obj = { name: name, model: model, impl: impl };
-        _init
-            ? initializeRepo(obj)
-            : _repoQueue.push(obj);
+        ioc.register(name, deps, impl, {
+            lifetime: ioc.lifetime.singleton,
+            create: function(inst) {
+                var repo = _.extend(mongoose.Model.compile(model.modelName, model.schema, model.collection.name, mongoose.connection, mongoose), inst, {
+                    _name: name, //** _name used internally to avoid naming conflicts, refactor this to use iocKey
+                    model: model
+                });
 
-        //** set the repo implementation as the exports object for the given module
-        return impl;
+                if(inst.initialize && _.isFunction(inst.initialize))
+                    inst.initialize.call(inst, repo);
 
+                return repo;
+            }
+        });
+
+        //** return the ioc so that if this is being included in a ioc.path() registration, it doesn't immediately resolve
+        return ioc;
     }
 });
 
@@ -157,7 +190,7 @@ function route(handler, req, res, next) { //** simple route handler
                 !res.get('content-type') && res.set('content-type', 'text/html');
                 res.end(result.toString());
 
-            //** 2) if the result object is an object, assume its an object literaly that needs to be serialized to json
+                //** 2) if the result object is an object, assume its an object literaly that needs to be serialized to json
             } else {
                 var status = "ok";
 
@@ -175,67 +208,6 @@ function route(handler, req, res, next) { //** simple route handler
         });
 }
 
-function initializeController(c) {
-    var fn = c;
-    if(!_.isFunction(c)) fn = function() { return c };
-
-    //** resolve the controller, to get its dependencies
-    _ioc(c._iocKey);
-    var impl = fn.apply(fn, c._resolved||[]);
-
-    //** wire up the individual controller methods
-    parseMethods(impl, c._name);
-
-    //** if this is the default controller, wire it up sans controller name (let its methods be served off root)
-    if(c._name == _opt.defaultController)
-        parseMethods(impl, '');
-
-    //** extend the default controller implementation onto the object
-    _.defaults(impl, {
-        util: {
-            //** returns a mongoose objectId from a string/int/etc id
-            ObjectId: function(id) { return mongoose.Types.ObjectId(id); }
-        },
-
-        //** a simple method that wraps the pattern of rendering a view with options
-        view: function(res, name, opt, p) {
-            p = p || _q.defer(), opt = opt||{};
-
-            //** render the view, return a promise, resolving/rejecting it when the view is rendered
-            res.render(name, opt, function(err, html) {
-                if(err) return p.reject(err); //**** MAKE THIS RETURN AN HTTP ERROR/500
-                p.resolve(html);
-            });
-            return p.promise;
-        }
-    });
-
-    //** if the controller implements an initialize method, call it now
-    _.isFunction(impl.initialize) && impl.initialize.call(impl);
-}
-
-function initializeRepo(r) {
-    //** resolve a string model
-    if(typeof(r.model) === 'string') r.model = _ioc(r.model);
-
-    var fn = r.impl;
-    if(!_.isFunction(fn)) fn = function() { return r.impl };
-
-    //** resolve the controller, to get its dependencies
-    _ioc(r.impl._iocKey);
-    var impl = fn.apply(r.impl, r.impl._resolved||[]);
-
-    //** compile a new model that we can mixin with our repo implementation; this keeps the base model separate from our decorated repository
-    var repo = _.extend(mongoose.Model.compile(r.model.modelName, r.model.schema, r.model.collection.name, mongoose.connection, mongoose), impl, { model: r.model });
-
-    //** re-register the object with the container, minus the path ,ie "repository.foo.bar"; this is for syntax sugar when defining dependencies (ie, 'UserRepo', vs 'Repository.UserRepo'
-    r.impl._iocKey && _ioc.register(r.name, repo, {force: true});
-
-    //** if the repo implements an initialize method, call it now
-    _.isFunction(repo.initialize) && repo.initialize.call(repo);
-}
-
-
 //** parses route handlers from the given object
 function parseMethods(obj, p, ctx) {
     ctx = ctx||obj;
@@ -244,7 +216,7 @@ function parseMethods(obj, p, ctx) {
 
     for(var m in obj) {
         //** convention: anything starting with underscore is "private", dont wire up the initialize method as a route handler
-        if(/^_.*/.test(m) || m == 'initialize') continue;                 
+        if(/^_.*/.test(m) || m == 'initialize') continue;
 
         //** if the property is an object, parse it, nesting the path; this allows /controller/nested/object/endpoint routes easily
         if(typeof(obj[m]) == 'object') {
@@ -260,7 +232,7 @@ function parseMethods(obj, p, ctx) {
         } else {
             //**** add translation table here to translate method names before we create endpoints
             //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
-            
+
             //** create a callback for every "public" method
             _app.all(_opt.routePrefix + p + m +'/?', _errorHandler, route.bind(ctx, obj[m])); //** for now as well...
         }
@@ -275,7 +247,7 @@ handlebars.registerHelper('layout', function(name, opt) {
     !opt && (opt = name) && (name = null);
 
     //** get the layout template and build a context
-    var layout = _templates.layout[name||'default'], 
+    var layout = _templates.layout[name||'default'],
         ctx = layout && _.extend(this, opt, { content: opt.fn(this) });
 
     //** either render the layout with the block text, or just render the block text
