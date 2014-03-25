@@ -13,7 +13,7 @@ var util = require('util'),
     handlebars = require('handlebars'),
     mongoose = require('mongoose'),
     q = require('q'),
-    ioc = require('cranejs').ioc;
+    ioc = require('crane-js').ioc;
 
 var _app = null,
     _init = null,

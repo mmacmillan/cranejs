@@ -6,7 +6,7 @@
         "name": "Mike MacMillan",
         "email": "<mikejmacmillan@gmail.com>"
     },
-    "main": "./crane.js",
+    "main": "crane.js",
     "repository": {
         "type": "git",
         "url": "git://github.com/mmacmillan/cranejs.git"
