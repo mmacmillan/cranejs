@@ -1,40 +1,44 @@
 {
-    "name": "crane-js",
-    "description": "Does the heavy lifting for a javascript application by providing a simple MVC environment (built on mongoose), favoring fluent configuration, along with an IoC Container, built-in repository pattern, and more",
-    "version": "0.1.4",
-    "author": {
-        "name": "Mike MacMillan",
-        "email": "<mikejmacmillan@gmail.com>"
-    },
-    "main": "crane.js",
-    "repository": {
-        "type": "git",
-        "url": "git://github.com/mmacmillan/cranejs.git"
-    },
-    "bugs": {
-        "url": "https://github.com/mmacmillan/cranejs/issues"
-    },
-    "licenses": [
-        {
-            "type": "MIT",
-            "url": "https://github.com/mmacmillan/cranejs/blob/master/LICENSE-MIT"
-        }
-    ],
-    "homepage": "https://github.com/mmacmillan/cranejs",
-
-    "dependencies": {
-        "express": "3.2.x",
-        "request": "2.27.0",
-        "cors": "1.0.x",
-        "lodash": "*",
-        "consolidate": "0.9.x",
-        "handlebars": "1.0.10",
-        "less": "1.4.x",
-        "q": "0.9.x",
-        "mongoose": "3.6.x"
-    },
-    "keywords": [
-        "mvc", "ioc", "dependency injection", "di", "container", "repository", "mongoose"
-    ]
+  "name": "crane-js",
+  "description": "Does the heavy lifting for a javascript application by providing a simple MVC environment (built on mongoose), favoring fluent configuration, along with an IoC Container, built-in repository pattern, and more",
+  "version": "0.1.5",
+  "author": {
+    "name": "Mike MacMillan",
+    "email": "<mikejmacmillan@gmail.com>"
+  },
+  "main": "crane.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/mmacmillan/cranejs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mmacmillan/cranejs/issues"
+  },
+  "licenses": [
+    {
+      "type": "MIT",
+      "url": "https://github.com/mmacmillan/cranejs/blob/master/LICENSE-MIT"
+    }
+  ],
+  "homepage": "https://github.com/mmacmillan/cranejs",
+  "dependencies": {
+    "express": "3.2.x",
+    "request": "2.27.0",
+    "cors": "1.0.x",
+    "lodash": "*",
+    "consolidate": "0.9.x",
+    "handlebars": "1.0.10",
+    "less": "1.4.x",
+    "q": "0.9.x",
+    "mongoose": "3.6.x"
+  },
+  "keywords": [
+    "mvc",
+    "ioc",
+    "dependency injection",
+    "di",
+    "container",
+    "repository",
+    "mongoose"
+  ]
 }
-
