@@ -21,6 +21,7 @@ var _app = null,
     _templates = {
         layout: {}
     },
+    _controllers = [],
     _opt = {
         defaultController: 'index',
         indexView: 'index',
@@ -60,7 +61,7 @@ var mvc = (module.exports = {
             });
         }
 
-        //** initialize any repos and controllers that have been q'd
+        _controllers.forEach(function(name) { ioc.instance(name) });
         _init = true;
         cb && cb.call(mvc);
     },
