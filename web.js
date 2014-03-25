@@ -75,7 +75,6 @@ function defaultMiddleware(app, opt, cb) {
     app.use(express.cookieParser());
     app.use(express.json());
     app.use(express.urlencoded());
-    app.use(express.multipart());
 
     //** fire the callback, to allow injecting middleware such as auth, above the router/static middleware
     cb && cb(app);
