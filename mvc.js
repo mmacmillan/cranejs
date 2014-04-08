@@ -76,6 +76,7 @@ var mvc = (module.exports = {
 
         //** if we've seen this controller before, return
         if(ioc.contains(name)) return ioc(name);
+        _controllers.push(name);
 
         ioc.register(name, deps, impl, {
             lifetime: ioc.lifetime.singleton,
@@ -175,7 +176,7 @@ function route(handler, req, res, next) { //** simple route handler
     p.error = function(message) { p.response({ message: message }, 500) }
 
     //** used for callbacks to promises for fail state, etc
-    p.errorCallback = function(err) { p.error(err.message) }
+    p.errorCallback = function(err) { p.error(err && err.message) }
 
     //** call the handler for this route
     util.log('[http] routing: '+ req.url);
