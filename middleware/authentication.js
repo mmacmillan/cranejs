@@ -9,11 +9,11 @@ var auth = (module.exports = {
 
     cookie: {
         //** set the auth cookie for the given response and value; hardcoded base64 and a long expires...move to options
-        set: function(res, username, id, opt) {
+        set: function(res, value, opt) {
             opt = opt||{};
             if(!options.crypto) return;
 
-            res.cookie(options.authCookie, this.generateToken(username, id, opt), {
+            res.cookie(options.authCookie, this.generateToken(value, opt), {
                 domain: opt.authCookieDomain||(options.authCookieDomain||null),
                 expires: opt.expires||new Date(Date.now() + 900000), //** 15 minutes
                 httpOnly: opt.httpOnly===false?false:true
@@ -23,8 +23,12 @@ var auth = (module.exports = {
         //** get the auth cookie based on the options, for the given request
         get: function(req, decrypt) { 
             var cookie = req.cookies[options.authCookie];
+
+            //** decrypt the cookie's if needed
             if(options.crypto && cookie)
-                return decrypt !== false ? options.crypto.aesDecrypt(cookie, 'hex'): cookie;
+                cookie = decrypt !== false ? options.crypto.aesDecrypt(cookie, 'hex') : cookie;
+
+            return cookie;
         },
 
         //** set the cookie to expires in the past, so the browser will remove it
@@ -35,12 +39,11 @@ var auth = (module.exports = {
             });
         },
 
-        generateToken: function(username, id, opt) {
+        generateToken: function(value, opt) {
             opt = opt||{};
-            var hash = 'username='+ username +'&id='+ id + '&timestamp='+ (new Date);
 
-            //** return the encrypted has as the token
-            return options.crypto.aesEncrypt(hash, opt.encoding||'hex');
+            //** return the encrypted value as the token
+            return options.crypto.aesEncrypt(value, opt.encoding||'hex');
         }
     },
 
@@ -81,7 +84,7 @@ var auth = (module.exports = {
             options.authCookie = cookieName;
             options.authCookieDomain = domain;
             options.crypto = opt.crypto;
-            options.fail = opt.fail||function(req, res, next) { 
+            options.fail = opt.fail||function(req, res, next) {
                 //** otherwise, redirect all other requests to authenticate
                 res.redirect(options.authUrl +'?r='+ encodeURIComponent(req.url));
             }
@@ -92,15 +95,14 @@ var auth = (module.exports = {
                 var token = auth.cookie.get(req),
                     uri = url.parse(req.url);
 
-                //** get the request user from the cookie if its exists, set the request user
                 if(token) {
+                    //** parse the plaintext token, as a querystring
                     var data = qs.parse(token);
 
+                    //** set the encrypted token on the request for later reference, fire a handler, then set the request.user cache
+                    options.onReceive && options.onReceive(data);
                     req.cookie = auth.cookie.get(req, false);
-                    req.user = { 
-                        id: data.id,
-                        username: data.username
-                    }
+                    req.user = data;
                 }
 
                 //** if the user is present, or we're serving static assets, skip auth
@@ -114,4 +116,4 @@ var auth = (module.exports = {
             }
         }
     }
-})
+});
