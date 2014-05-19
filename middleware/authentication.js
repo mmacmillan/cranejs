@@ -80,7 +80,7 @@ var auth = (module.exports = {
             //** set the middleware options
             opt = opt||{};
             options.public = opt.public || 'js|g|css|pub'; //** regex OR of pub paths
-            options.timeout = opt.timeout || (((60 * 24) * 14) * 1000); //** 14 days...
+            options.timeout = opt.timeout || new Date(Date.now() + (((60 * 60 * 24) * 14) * 1000)); //** 14 days...
             options.authUrl = authUrl;
             options.authCookie = cookieName;
             options.authCookieDomain = domain;
