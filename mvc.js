@@ -12,6 +12,7 @@ var util = require('util'),
     path = require('path'),
     handlebars = require('handlebars'),
     mongoose = require('mongoose'),
+    mq = require('mongoose-q')(mongoose),
     q = require('q'),
     ioc = require('crane-js').ioc;
 

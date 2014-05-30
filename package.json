@@ -30,7 +30,8 @@
     "handlebars": "1.0.10",
     "less": "1.4.x",
     "q": "0.9.x",
-    "mongoose": "3.6.x"
+    "mongoose": "3.6.x",
+    "mongoose-q": "0.0.x"
   },
   "keywords": [
     "mvc",
