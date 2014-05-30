@@ -1,7 +1,7 @@
 {
   "name": "crane-js",
   "description": "Does the heavy lifting for a javascript application by providing a simple MVC environment (built on mongoose), favoring fluent configuration, along with an IoC Container, built-in repository pattern, and more",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "author": {
     "name": "Mike MacMillan",
     "email": "<mikejmacmillan@gmail.com>"
