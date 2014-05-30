@@ -55,6 +55,8 @@ _.extend(ioc, events.EventEmitter.prototype, {
         ioc.emit('load');
     },
 
+    initialized: function() { return init },
+
 
     //** Resolution Methods
     //** ----
@@ -90,6 +92,10 @@ _.extend(ioc, events.EventEmitter.prototype, {
     //** simply return if the container contains an object with the given key
     contains: function(key) {
         return !!modules[key];
+    },
+
+    modules: function() {
+        return modules;
     },
 
 
