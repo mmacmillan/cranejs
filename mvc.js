@@ -11,10 +11,9 @@ var util = require('util'),
     fs = require('fs'),
     path = require('path'),
     handlebars = require('handlebars'),
-    mongoose = require('mongoose'),
-    mq = require('mongoose-q')(mongoose),
     q = require('q'),
-    ioc = require('crane-js').ioc;
+    crane = require('crane-js'),
+    ioc = crane.ioc;
 
 var _app = null,
     _init = null,
@@ -93,10 +92,6 @@ var mvc = (module.exports = {
 
                 //** extend the default controller implementation onto the object
                 _.defaults(inst, {
-                    util: {
-                        //** returns a mongoose objectId from a string/int/etc id
-                        ObjectId: function(id) { return mongoose.Types.ObjectId(id); }
-                    },
 
                     //** a simple method that wraps the pattern of rendering a view with options
                     view: function(res, vname, opt, p) {
@@ -135,10 +130,11 @@ var mvc = (module.exports = {
         ioc.register(name, deps, impl, {
             lifetime: ioc.lifetime.singleton,
             create: function(inst) {
-                var repo = _.extend(mongoose.Model.compile(model.modelName, model.schema, model.collection.name, mongoose.connection, mongoose), inst, {
-                    _name: name, //** _name used internally to avoid naming conflicts, refactor this to use iocKey
-                    model: model
-                });
+                var mongoose = crane.mongoose(),
+                    repo = _.extend(mongoose.Model.compile(model.modelName, model.schema, model.collection.name, mongoose.connection, mongoose), inst, {
+                        _name: name, //** _name used internally to avoid naming conflicts, refactor this to use iocKey
+                        model: model
+                    });
 
                 if(inst.initialize && _.isFunction(inst.initialize))
                     inst.initialize.call(inst, repo);

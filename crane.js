@@ -1,4 +1,4 @@
-/*
+/* 
  | crane.js
  | ----
  | does the heavy-lifting for javascript applications
@@ -17,6 +17,12 @@ module.exports = crane = {
     path: null,
     root: function(path) {
         this.path = path;
+        return this;
+    },
+    mongoose: function(m) {
+        if(!m) return this._mongoose;
+
+        this._mongoose = m;
         return this;
     }
 }
