@@ -227,7 +227,7 @@ function parseMethods(obj, p, ctx) {
 
         //** if this is the "index" method, wire it up sans named endpoint
         if(m == _opt.indexView) {
-            _app.all(_opt.routePrefix + p , _errorHandler, route.bind(obj, obj[m])); //** for now...
+            _app.all(_opt.routePrefix + p +'/?', _errorHandler, route.bind(obj, obj[m])); //** for now...
         } else {
             //**** add translation table here to translate method names before we create endpoints
             //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
