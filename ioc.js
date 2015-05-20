@@ -64,7 +64,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
     //** format: instance('key', [arg1, arg2, ...] [, context]);
     instance: function(key, args, context) {
         //** find the object by key, and resolve with the given arguments
-        key = (key||'').toLowerCase();
+        key = (key||'').toLowerCase().replace('.', '/').replace('\\', '/');
         var args = args||[],
             comp = modules[key] && modules[key].instance(args, context);
 
@@ -74,17 +74,15 @@ _.extend(ioc, events.EventEmitter.prototype, {
     },
 
     //** format: ns('controllers')
+    //** returns a list of modules beneath the given path/namespace
     ns: function(nskey) {
         var objs = {},
-            nskey = (nskey||'').toLowerCase(),
-            gex = nskey && nskey != '' ? new RegExp('\\.?'+ nskey +'\\.(.*?)') : /^[^.]*$/;
+            nskey = (nskey||'').toLowerCase().replace(/[/\\]/g, '\\/'),
+            gex = nskey && nskey != '' ? new RegExp('\\/?'+ nskey +'(\\/)?(.*?)') : /^[^\/]*$/;
 
-        //** find all the objects of the given namespace, and return a resolved object for use
+        //** find all the objects of the given namespace, and return an object which can be used for resolution
         for(var key in modules)
-            gex.test(key) && (objs[key.replace(nskey +'.', '')] = modules[key].resolve());
-
-        //** trigger an error if we couldn't resolve the namespace
-        Object.keys(objs).length==0 && this.emit('resolve:error', { namespace: nskey });
+            gex.test(key) && (objs[key] = modules[key]);
 
         return objs;
     },
@@ -114,7 +112,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
         function load(p) {
             var dirs = [],
-                base = opt.key || path.normalize(p.replace(crane.path, '')).substring(1).replace(/[/\\]/g, '.'),
+                base = opt.key || path.normalize(p.replace(crane.path, '')).substring(1).replace(/[/\\]/g, '/'),
                 files = fs.readdirSync(p);
 
             files.forEach(function(name) {
@@ -128,8 +126,8 @@ _.extend(ioc, events.EventEmitter.prototype, {
                     //** require the object to see if its valid; fire the parse callback if so, then create the container key and register it.  reject objects
                     //** that return the ioc; that means they are self-registering, and merely need be require()'d
                     if((x = require(p +'/'+ name)) !== ioc) {
-                        if(('apply' in opt.parse) && !opt.parse.call(this, x)) return;
-                        var key = (base +'.').replace('..', '.') + (x[opt.keyProp] || path.basename(name, '.js'));
+                        var key = (base +'/').replace('..', '/') + (x[opt.keyProp] || path.basename(name, '.js'));
+                        if(('apply' in opt.parse) && !opt.parse.call(this, x, key)) return;
                         this.register(key, x, opt);
                     }
                 }
@@ -154,7 +152,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
         //** split the object's children into key/value pairs, and register each, allowing the dev a chance to filter before registration
         _.pairs(obj).forEach(function(pair) {
             if(('apply' in opt.filter) && !opt.filter.apply(this, pair)) return;
-            this.register(key +'.'+ pair[0], pair[1], opt);
+            this.register(key +'/'+ pair[0], pair[1], opt);
         }.bind(this));
 
         return this;
