@@ -112,13 +112,23 @@ _.extend(ioc, events.EventEmitter.prototype, {
 
         function load(p) {
             var dirs = [],
-                base = opt.key || path.normalize(p.replace(crane.path, '')).substring(1).replace(/[/\\]/g, '/'),
+                base = opt.key,
                 files = fs.readdirSync(p);
+
+            //** determine the base key path, if no key has been given
+            if(!base) {
+                base = p.replace(crane.path, '')
+                        .replace(/[\\]/g, '/')
+                        .replace(/\/\//g, '/')
+                        .replace(/^\//, '');
+
+                base = path.normalize(base +'/');
+            }
 
             files.forEach(function(name) {
                 //** queue folders for for loading if recursion is enabled
                 if(fs.statSync(p +'/'+ name).isDirectory())
-                    return opt.recurse && dirs.push(p +'/'+ name);
+                    return opt.recurse && dirs.push(p + name +'/');
                 else {
                     //** apply the filter to the file's name/path, returning if necessary
                     if(('apply' in opt.filter) && !opt.filter.call(this, name)) return;
@@ -126,7 +136,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
                     //** require the object to see if its valid; fire the parse callback if so, then create the container key and register it.  reject objects
                     //** that return the ioc; that means they are self-registering, and merely need be require()'d
                     if((x = require(p +'/'+ name)) !== ioc) {
-                        var key = (base +'/').replace('..', '/') + (x[opt.keyProp] || path.basename(name, '.js'));
+                        var key = base + (x[opt.keyProp] || path.basename(name, '.js'));
                         if(('apply' in opt.parse) && !opt.parse.call(this, x, key)) return;
                         this.register(key, x, opt);
                     }
@@ -137,7 +147,7 @@ _.extend(ioc, events.EventEmitter.prototype, {
             dirs.forEach(load.bind(this));
         }
 
-        load.call(this, path.normalize(dir[0] == '/' ? dir : crane.path +'/'+ dir));
+        load.call(this, path.normalize((dir[0] == '/' ? dir : crane.path +'/'+ dir) +'/'));
         return this;
     },
 
