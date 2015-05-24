@@ -211,7 +211,6 @@ function route(handler, req, res, next) { //** simple route handler
 function parseMethods(obj, p, ctx) {
     ctx = ctx||obj;
     if(!p && p != '') p = obj._name||''; //** p = path
-    if(p != '' && _.last(p) != '/') p += '/?';
 
     for(var m in obj) {
         //** convention: anything starting with underscore is "private", dont wire up the initialize method as a route handler
@@ -219,7 +218,7 @@ function parseMethods(obj, p, ctx) {
 
         //** if the property is an object, parse it, nesting the path; this allows /controller/nested/object/endpoint routes easily
         if(typeof(obj[m]) == 'object') {
-            parseMethods(obj[m], p + m, ctx);
+            parseMethods(obj[m], (p=='' ? p : p + '/') + m, ctx);
             continue;
         }
 
@@ -227,13 +226,15 @@ function parseMethods(obj, p, ctx) {
 
         //** if this is the "index" method, wire it up sans named endpoint
         if(m == _opt.indexView) {
-            _app.all(_opt.routePrefix + p, _errorHandler, route.bind(obj, obj[m])); //** for now...
+            var frag = p != '' && _.last(p) != '/' ? p + '/?' : p;
+            _app.all(_opt.routePrefix + frag, _errorHandler, route.bind(obj, obj[m])); //** for now...
         } else {
             //**** add translation table here to translate method names before we create endpoints
             //**** ie, translate obj['SomeMethod'] to obj['SomeOtherMethod'] and dont wire up 'SomeMethod'
 
             //** create a callback for every "public" method
-            _app.all(_opt.routePrefix + p + m, _errorHandler, route.bind(ctx, obj[m])); //** for now as well...
+            var frag = (p == '' ? p : p + '/') + (_.last(m) != '/' ? m + '/?' : m);
+            _app.all(_opt.routePrefix + frag, _errorHandler, route.bind(ctx, obj[m])); //** for now as well...
         }
     }
 }
@@ -269,4 +270,3 @@ handlebars.registerHelper('template', function(p, opt) {
         ? template.call(this, _.extend(this, opt, { content: opt.fn(this) }))
         : opt.fn(this);
 });
-
