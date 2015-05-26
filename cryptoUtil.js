@@ -18,6 +18,15 @@ module.exports = function(baseSalt) {
             return crypto.createHash('sha256').update(data).digest(encoding||'hex');
         },
 
+        md5: function(data, encoding) {
+            return crypto.createHash('md5').update(data).digest(encoding||'hex');
+        },
+
+        hash: function(type, data, encoding) {
+            //** type: md5, sha1, sha256, sha512
+            return crypto.createHash(type).update(data).digest(encoding||'hex');
+        },
+
         //** creates a hash for a password using a salt and key strengthening, using the default encoding 'hex'
         password: function(text, hashFn, salt) {
             salt = salt||baseSalt;

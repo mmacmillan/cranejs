@@ -10,7 +10,7 @@ var util = require('util'),
     emitter = require('events').EventEmitter;
 
 //** the supported components; move these to a folder and register by convention vs explicitly
-var components = ['ioc', 'web', 'mvc', 'crypto', 'middleware'];
+var components = ['ioc', 'web', 'mvc', 'cryptoUtil', 'middleware'];
 
 module.exports = crane = {
     //** provide some base dir context, and a helper
